@@ -1,7 +1,7 @@
 """
 A program that renders mono input as 3D, stereo output
 
-:-a --azimuth evaluator 20*seconds
+:-a --azimuth evaluator 40*seconds
     Horizontal angle in degrees (0 = center). Can be expression like "90 * seconds"
 
 :-e --elevation evaluator 0
@@ -10,7 +10,7 @@ A program that renders mono input as 3D, stereo output
 :-d --distance evaluator 10
     Distance (10 = 100%% volume). Can be expression like "cos(seconds)"'
 
-:-u --update-interval float 0.3
+:-u --update-interval float 0.05
     Seconds between updating the position
 
 :-c --chunk-size int 2048
@@ -56,20 +56,40 @@ class Processor:
         self.calc_azimuth = calc_azimuth
         self.calc_elevation = calc_elevation
         self.calc_distance = calc_distance
-        self.direction = self.calc_direction(self.calc_azimuth(), self.calc_elevation())
+        self.filter = self.calc_filter(self.calc_azimuth(), self.calc_elevation())
         self.distance = self.calc_distance()
         self.update_interval = update_interval
         self.last_update = monotonic()
 
-    def calc_direction(self, azimuth, elevation) -> int:
-        """Finds the filter index that has an angle that most closely corresponds to the given angle"""
+    def calc_filter(self, azimuth, elevation) -> np.ndarray:
+        """
+        Calculates a left right convolution filter for a particular direction
+        Works by taking a weighted average of the 4 closest filters
+        """
         angle = np.array([azimuth, elevation])
         diffs = ((self.angles - angle) + 180) % 360 - 180
-        dists = (diffs ** 2).sum(axis=-1)
-        return dists.argmin()
+        x_is_positive = diffs[:, 0] >= 0
+        y_is_positive = diffs[:, 1] >= 0
+
+        def calc_closest_index(constraint):
+            indices = np.where(constraint)
+            ndiffs = diffs[indices]
+            ndists = (ndiffs ** 2).sum(axis=-1)
+            min_index = ndists.argmin()
+            return indices[0][min_index], ndists[min_index]
+
+        index_data = [calc_closest_index(i) for i in [
+            x_is_positive & y_is_positive,
+            x_is_positive & ~y_is_positive,
+            ~x_is_positive & y_is_positive,
+            ~x_is_positive & ~y_is_positive
+        ]]
+        weights = [1 / dist for index, dist in index_data]
+        indices = [index for index, weight in index_data]
+        return np.average(self.filters[indices], weights=weights, axis=0)
 
     def update(self):
-        self.direction = self.calc_direction(self.calc_azimuth(), self.calc_elevation())
+        self.filter = self.calc_filter(self.calc_azimuth(), self.calc_elevation())
         self.distance = self.calc_distance()
         self.last_update = monotonic()
 
@@ -79,8 +99,8 @@ class Processor:
             self.update()
         full_audio = np.concatenate([self.buffer, audio]) * (10.0 / self.distance)
         self.buffer = audio[-len(self.buffer):]
-        left = np.convolve(full_audio, self.filters[self.direction][0], mode='valid')
-        right = np.convolve(full_audio, self.filters[self.direction][1], mode='valid')
+        left = np.convolve(full_audio, self.filter[0], mode='valid')
+        right = np.convolve(full_audio, self.filter[1], mode='valid')
         return left, right
 
 
