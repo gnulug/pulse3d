@@ -52,7 +52,7 @@ class Processor:
         chop_index = find_index_to_running_sum(mag, 0.05 * mag.sum())
         self.filters = filters[:, :, chop_index:2 * chop_index]
         self.buffer = np.zeros((self.filters.shape[-1],))
-        self.angles = np.dstack([hrir.azimuths, hrir.elevations])
+        self.angles = np.dstack([hrir.azimuths, hrir.elevations])[0]
         self.calc_azimuth = calc_azimuth
         self.calc_elevation = calc_elevation
         self.calc_distance = calc_distance
