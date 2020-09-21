@@ -27,7 +27,7 @@ from collections import namedtuple
 from os.path import dirname, realpath, join
 from time import sleep, monotonic
 from traceback import format_exception_only
-from typing import Callable
+from typing import Callable, Tuple
 from zipfile import ZipFile
 
 import numpy as np
@@ -73,7 +73,7 @@ class Processor:
         self.distance = self.calc_distance()
         self.last_update = monotonic()
 
-    def process(self, audio: np.ndarray) -> np.ndarray:
+    def process(self, audio: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Render positioned mono audio into 3D, stereo audio"""
         if monotonic() - self.last_update >= self.update_interval:
             self.update()
